@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 from data_preparer import prepare_data, filter_trend_data, filter_range_data
 from trading_env import TradingEnv
 
-def train_specialist(data, model_name, timesteps=50000):
+def train_specialist(data, model_name, timesteps=200000):
     """
     Trains a specialist PPO model on the given data.
 

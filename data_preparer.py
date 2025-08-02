@@ -1,10 +1,10 @@
-import yfinance as yf
-import pandas_ta as ta
 import pandas as pd
+import pandas_ta as ta
+from bybit_client import BybitClient
 
 def prepare_data(symbol, start_date, end_date):
     """
-    Fetches historical OHLCV data from yfinance and calculates technical indicators.
+    Fetches historical OHLCV data from Bybit and calculates technical indicators.
 
     Args:
         symbol (str): The ticker symbol to fetch data for.
@@ -14,13 +14,14 @@ def prepare_data(symbol, start_date, end_date):
     Returns:
         pandas.DataFrame: A DataFrame with OHLCV data and technical indicators.
     """
-    # Fetch data from yfinance
-    df = yf.download(symbol, start=start_date, end=end_date)
+    # Initialize Bybit client and fetch data
+    client = BybitClient()
+    df = client.fetch_ohlcv(symbol, start_date, end_date)
 
     if df.empty:
         raise ValueError("No data fetched for the given symbol and date range.")
 
-    # Handle MultiIndex columns from yfinance
+    # Handle MultiIndex columns from yfinance (in case the placeholder is used)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -29,6 +30,8 @@ def prepare_data(symbol, start_date, end_date):
     df.ta.vwap(length=24, append=True)
     df.ta.adx(length=14, append=True)
     df.ta.atr(length=14, append=True)
+    df.ta.rsi(length=14, append=True)
+    df.ta.macd(fast=12, slow=26, signal=9, append=True)
 
     # Drop rows with NaN values
     df.dropna(inplace=True)

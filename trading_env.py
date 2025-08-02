@@ -9,7 +9,7 @@ class TradingEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, initial_balance=10000):
+    def __init__(self, df, initial_balance=10000, risk_free_rate=0.0):
         super(TradingEnv, self).__init__()
 
         self.df = df
@@ -18,13 +18,15 @@ class TradingEnv(gym.Env):
         self.position = 0  # 0 for no position, 1 for long
         self.entry_price = 0
         self.current_step = 0
+        self.portfolio_values = [initial_balance]
+        self.risk_free_rate = risk_free_rate
 
         # Actions: 0: Hold, 1: Buy, 2: Sell
         self.action_space = spaces.Discrete(3)
 
         # Observation space: OHLCV + indicators + position
         self.observation_space = spaces.Box(
-            low=0, high=np.inf, shape=(len(df.columns) + 1,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(len(df.columns) + 1,), dtype=np.float32
         )
 
     def reset(self):
@@ -35,6 +37,7 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = 0
         self.current_step = 0
+        self.portfolio_values = [self.initial_balance]
         return self._get_observation()
 
     def _get_observation(self):
@@ -45,42 +48,57 @@ class TradingEnv(gym.Env):
         obs = np.append(obs, self.position)
         return obs
 
-    def _calculate_reward(self, action):
+    def _calculate_reward(self):
         """
-        Calculates the reward for a given action.
+        Calculates a Sharpe Ratio-based reward.
         """
-        current_price = self.df['Close'].iloc[self.current_step]
-        reward = 0
+        if len(self.portfolio_values) < 2:
+            return 0
 
-        if action == 2 and self.position == 1:  # Sell
-            reward = current_price - self.entry_price
+        portfolio_return = (self.portfolio_values[-1] / self.portfolio_values[-2]) - 1
 
-        return reward
+        # Simplified risk penalty using standard deviation of recent returns
+        returns_window = pd.Series(self.portfolio_values).pct_change().dropna()
+        risk = returns_window.std() if len(returns_window) > 1 else 0
+
+        # Sharpe-like reward
+        reward = portfolio_return - self.risk_free_rate - risk
+        return reward if np.isfinite(reward) else 0
+
 
     def step(self, action):
         """
         Executes one time step within the environment.
         """
         current_price = self.df['Close'].iloc[self.current_step]
-        reward = 0
-        done = False
 
         # Execute action
         if action == 1 and self.position == 0:  # Buy
             self.position = 1
             self.entry_price = current_price
         elif action == 2 and self.position == 1:  # Sell
-            reward = self._calculate_reward(action)
             self.position = 0
             self.balance += current_price - self.entry_price
             self.entry_price = 0
+
+        # Update portfolio value
+        # If we are in a long position, the portfolio value is the balance + the current value of the position
+        # If we are not in a position, the portfolio value is just the balance
+        if self.position == 1:
+            portfolio_value = self.balance + (current_price - self.entry_price)
+        else:
+            portfolio_value = self.balance
+        self.portfolio_values.append(portfolio_value)
+
+
+        # Calculate reward
+        reward = self._calculate_reward()
 
         # Move to the next step
         self.current_step += 1
 
         # Check if the episode is done
-        if self.current_step >= len(self.df) - 1 or self.balance <= 0:
-            done = True
+        done = self.current_step >= len(self.df) - 1 or self.balance <= 0
 
         obs = self._get_observation()
         info = {
