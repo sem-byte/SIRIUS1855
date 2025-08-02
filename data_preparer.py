@@ -34,3 +34,15 @@ def prepare_data(symbol, start_date, end_date):
     df.dropna(inplace=True)
 
     return df
+
+def filter_trend_data(df):
+    """
+    Filters the DataFrame for trend conditions (ADX > 25).
+    """
+    return df[df['ADX_14'] > 25].copy()
+
+def filter_range_data(df):
+    """
+    Filters the DataFrame for range-bound conditions (ADX <= 25).
+    """
+    return df[df['ADX_14'] <= 25].copy()
