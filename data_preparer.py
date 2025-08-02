@@ -43,6 +43,6 @@ def filter_trend_data(df):
 
 def filter_range_data(df):
     """
-    Filters the DataFrame for range-bound conditions (ADX <= 25).
+    Filters the DataFrame for range-bound conditions (ADX < 20).
     """
-    return df[df['ADX_14'] <= 25].copy()
+    return df[df['ADX_14'] < 20].copy()
