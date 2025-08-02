@@ -21,12 +21,17 @@ class TradingEnv(gym.Env):
         self.portfolio_values = [initial_balance]
         self.risk_free_rate = risk_free_rate
 
+        # Define the feature columns to be used for the observation
+        # This makes the observation space independent of the number of columns in the df
+        self.feature_columns = [col for col in df.columns if col.startswith(('EMA', 'VWAP', 'ADX', 'ATR', 'RSI', 'MACD'))]
+        self.feature_columns.extend(['Open', 'High', 'Low', 'Close', 'Volume'])
+
         # Actions: 0: Hold, 1: Buy, 2: Sell
         self.action_space = spaces.Discrete(3)
 
-        # Observation space: OHLCV + indicators + position
+        # Observation space: features + position
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(len(df.columns) + 1,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(len(self.feature_columns) + 1,), dtype=np.float32
         )
 
     def reset(self):
@@ -44,7 +49,7 @@ class TradingEnv(gym.Env):
         """
         Gets the observation for the current step.
         """
-        obs = self.df.iloc[self.current_step].values
+        obs = self.df[self.feature_columns].iloc[self.current_step].values
         obs = np.append(obs, self.position)
         return obs
 
