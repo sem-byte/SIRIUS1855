@@ -18,10 +18,11 @@ class TradingEnv(gym.Env):
         self.position = 0  # 0 for no position, 1 for long
         self.entry_price = 0
         self.current_step = 0
+        self.hold_duration = 0
 
         # Define the feature columns for the observation space
         if feature_columns is None:
-            self.feature_columns = ['Close', 'Volume', 'RSI_14', 'ADX_14']
+            self.feature_columns = ['Close', 'Volume', 'RSI_14', 'MACDh_12_26_9']
         else:
             self.feature_columns = feature_columns
 
@@ -41,6 +42,7 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = 0
         self.current_step = 0
+        self.hold_duration = 0
         return self._get_observation()
 
     def _get_observation(self):
@@ -58,24 +60,31 @@ class TradingEnv(gym.Env):
         current_price = self.df['Close'].iloc[self.current_step]
         reward = 0
 
-        # Penalty for holding
-        if action == 0:
-            reward -= 0.0001 # Small penalty for holding
+        # Penalty for holding no position
+        if self.position == 0:
+            reward -= 0.00001 # Very small penalty for holding no position
+
+        # Penalty for holding a position
+        if self.position == 1:
+            self.hold_duration += 1
+            reward -= 0.0001 * self.hold_duration # Time decay penalty
 
         # Execute action
         if action == 1 and self.position == 0:  # Buy
             self.position = 1
             self.entry_price = current_price
+            self.hold_duration = 0
         elif action == 2 and self.position == 1:  # Sell
             self.position = 0
             profit = current_price - self.entry_price
             self.balance += profit
             self.entry_price = 0
+            self.hold_duration = 0
 
             if profit > 0:
-                reward += profit * 0.1 # Reward for profitable trade
+                reward += profit # Large positive reward for profitable trade
             else:
-                reward -= abs(profit) * 0.15 # Larger penalty for unprofitable trade
+                reward += profit # Large negative reward (penalty) for unprofitable trade
 
         # Move to the next step
         self.current_step += 1
