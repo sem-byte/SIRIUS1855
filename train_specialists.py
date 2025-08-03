@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 from data_preparer import prepare_data, filter_trend_data, filter_range_data
 from trading_env import TradingEnv
 
-def train_specialist(data, model_name, timesteps=300000):
+def train_specialist(data, model_name, timesteps=500000):
     """
     Trains a specialist PPO model on the given data.
 
@@ -18,9 +18,15 @@ def train_specialist(data, model_name, timesteps=300000):
         return
 
     print(f"Training {model_name}...")
-    features = ['Close', 'Volume', 'RSI_14', 'MACDh_12_26_9']
-    env = TradingEnv(df=data, feature_columns=features)
-    model = PPO('MlpPolicy', env, verbose=1, ent_coef=0.01)
+    env = TradingEnv(df=data)
+    model = PPO(
+        'MlpPolicy',
+        env,
+        verbose=1,
+        ent_coef=0.01,
+        gamma=0.95,
+        gae_lambda=0.9
+    )
     model.learn(total_timesteps=timesteps)
 
     models_dir = "models"

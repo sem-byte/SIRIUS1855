@@ -9,22 +9,23 @@ class TradingEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, initial_balance=10000, feature_columns=None):
+    def __init__(self, df, initial_balance=10000, risk_percentage=0.02):
         super(TradingEnv, self).__init__()
 
         self.df = df
         self.initial_balance = initial_balance
         self.balance = initial_balance
-        self.position = 0  # 0 for no position, 1 for long
+        self.risk_percentage = risk_percentage
+        self.position = 0  # 0 for no position, > 0 for long
         self.entry_price = 0
         self.current_step = 0
-        self.hold_duration = 0
+        self.peak_balance = initial_balance
 
         # Define the feature columns for the observation space
-        if feature_columns is None:
-            self.feature_columns = ['Close', 'Volume', 'RSI_14', 'MACDh_12_26_9']
-        else:
-            self.feature_columns = feature_columns
+        self.feature_columns = [
+            'Close', 'Volume', 'RSI_14', 'MACDh_12_26_9',
+            'open_interest', 'long_short_ratio', 'funding_rate', 'ATR_p'
+        ]
 
         # Actions: 0: Hold, 1: Buy, 2: Sell
         self.action_space = spaces.Discrete(3)
@@ -42,12 +43,12 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = 0
         self.current_step = 0
-        self.hold_duration = 0
+        self.peak_balance = self.initial_balance
         return self._get_observation()
 
     def _get_observation(self):
         """
-        Gets the observation for the current step using the specified feature set.
+        Gets the observation for the current step.
         """
         obs = self.df[self.feature_columns].iloc[self.current_step].values
         obs = np.append(obs, self.position)
@@ -58,33 +59,36 @@ class TradingEnv(gym.Env):
         Executes one time step within the environment.
         """
         current_price = self.df['Close'].iloc[self.current_step]
+        atr = self.df['ATRr_14'].iloc[self.current_step]
         reward = 0
 
-        # Penalty for holding no position
-        if self.position == 0:
-            reward -= 0.00001 # Very small penalty for holding no position
-
-        # Penalty for holding a position
-        if self.position == 1:
-            self.hold_duration += 1
-            reward -= 0.0001 * self.hold_duration # Time decay penalty
+        # Drawdown penalty
+        self.peak_balance = max(self.peak_balance, self.balance)
+        drawdown = (self.peak_balance - self.balance) / self.peak_balance if self.peak_balance > 0 else 0
+        reward -= drawdown * 0.01
 
         # Execute action
         if action == 1 and self.position == 0:  # Buy
-            self.position = 1
-            self.entry_price = current_price
-            self.hold_duration = 0
-        elif action == 2 and self.position == 1:  # Sell
-            self.position = 0
-            profit = current_price - self.entry_price
+            # Dynamic position sizing
+            risk_amount = self.balance * self.risk_percentage
+            stop_loss_price = current_price - (atr * 2) # Example stop-loss
+
+            if current_price > stop_loss_price:
+                position_size = risk_amount / (current_price - stop_loss_price)
+                self.position = position_size
+                self.entry_price = current_price
+
+        elif action == 2 and self.position > 0:  # Sell
+            profit = (current_price - self.entry_price) * self.position
             self.balance += profit
-            self.entry_price = 0
-            self.hold_duration = 0
 
             if profit > 0:
-                reward += profit # Large positive reward for profitable trade
+                reward += profit
             else:
-                reward += profit # Large negative reward (penalty) for unprofitable trade
+                reward += profit * 2 # Penalize losses more severely
+
+            self.position = 0
+            self.entry_price = 0
 
         # Move to the next step
         self.current_step += 1
@@ -95,7 +99,7 @@ class TradingEnv(gym.Env):
         obs = self._get_observation()
         info = {
             'balance': self.balance,
-            'position': 'Long' if self.position == 1 else 'None',
+            'position': 'Long' if self.position > 0 else 'None',
             'price': current_price
         }
 

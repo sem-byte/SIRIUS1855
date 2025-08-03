@@ -25,6 +25,14 @@ def prepare_data(symbol, start_date, end_date):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
+    # Fetch additional data
+    open_interest = client.fetch_open_interest(symbol, start_date, end_date)
+    long_short_ratio = client.fetch_long_short_ratio(symbol, start_date, end_date)
+    funding_rate = client.fetch_funding_rate(symbol, start_date, end_date)
+
+    # Merge additional data
+    df = df.join(open_interest).join(long_short_ratio).join(funding_rate)
+
     # Calculate technical indicators using pandas_ta
     df.ta.ema(length=200, append=True)
     df.ta.vwap(length=24, append=True)
@@ -32,6 +40,9 @@ def prepare_data(symbol, start_date, end_date):
     df.ta.atr(length=14, append=True)
     df.ta.rsi(length=14, append=True)
     df.ta.macd(fast=12, slow=26, signal=9, append=True)
+
+    # Normalize ATR
+    df['ATR_p'] = (df['ATRr_14'] / df['Close']) * 100
 
     # Drop rows with NaN values
     df.dropna(inplace=True)
