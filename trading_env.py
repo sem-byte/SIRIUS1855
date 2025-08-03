@@ -9,7 +9,7 @@ class TradingEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, initial_balance=10000, risk_free_rate=0.0):
+    def __init__(self, df, initial_balance=10000):
         super(TradingEnv, self).__init__()
 
         self.df = df
@@ -18,13 +18,9 @@ class TradingEnv(gym.Env):
         self.position = 0  # 0 for no position, 1 for long
         self.entry_price = 0
         self.current_step = 0
-        self.portfolio_values = [initial_balance]
-        self.risk_free_rate = risk_free_rate
 
-        # Define the feature columns to be used for the observation
-        # This makes the observation space independent of the number of columns in the df
-        self.feature_columns = [col for col in df.columns if col.startswith(('EMA', 'VWAP', 'ADX', 'ATR', 'RSI', 'MACD'))]
-        self.feature_columns.extend(['Open', 'High', 'Low', 'Close', 'Volume'])
+        # Define the feature columns for the simplified observation space
+        self.feature_columns = ['Close', 'Volume', 'RSI_14', 'ADX_14']
 
         # Actions: 0: Hold, 1: Buy, 2: Sell
         self.action_space = spaces.Discrete(3)
@@ -42,40 +38,26 @@ class TradingEnv(gym.Env):
         self.position = 0
         self.entry_price = 0
         self.current_step = 0
-        self.portfolio_values = [self.initial_balance]
         return self._get_observation()
 
     def _get_observation(self):
         """
-        Gets the observation for the current step.
+        Gets the observation for the current step using the simplified feature set.
         """
         obs = self.df[self.feature_columns].iloc[self.current_step].values
         obs = np.append(obs, self.position)
         return obs
-
-    def _calculate_reward(self):
-        """
-        Calculates a Sharpe Ratio-based reward.
-        """
-        if len(self.portfolio_values) < 2:
-            return 0
-
-        portfolio_return = (self.portfolio_values[-1] / self.portfolio_values[-2]) - 1
-
-        # Simplified risk penalty using standard deviation of recent returns
-        returns_window = pd.Series(self.portfolio_values).pct_change().dropna()
-        risk = returns_window.std() if len(returns_window) > 1 else 0
-
-        # Sharpe-like reward
-        reward = portfolio_return - self.risk_free_rate - risk
-        return reward if np.isfinite(reward) else 0
-
 
     def step(self, action):
         """
         Executes one time step within the environment.
         """
         current_price = self.df['Close'].iloc[self.current_step]
+        reward = 0
+
+        # Penalty for holding
+        if action == 0:
+            reward -= 0.0001 # Small penalty for holding
 
         # Execute action
         if action == 1 and self.position == 0:  # Buy
@@ -83,21 +65,14 @@ class TradingEnv(gym.Env):
             self.entry_price = current_price
         elif action == 2 and self.position == 1:  # Sell
             self.position = 0
-            self.balance += current_price - self.entry_price
+            profit = current_price - self.entry_price
+            self.balance += profit
             self.entry_price = 0
 
-        # Update portfolio value
-        # If we are in a long position, the portfolio value is the balance + the current value of the position
-        # If we are not in a position, the portfolio value is just the balance
-        if self.position == 1:
-            portfolio_value = self.balance + (current_price - self.entry_price)
-        else:
-            portfolio_value = self.balance
-        self.portfolio_values.append(portfolio_value)
-
-
-        # Calculate reward
-        reward = self._calculate_reward()
+            if profit > 0:
+                reward += profit * 0.1 # Reward for profitable trade
+            else:
+                reward -= abs(profit) * 0.15 # Larger penalty for unprofitable trade
 
         # Move to the next step
         self.current_step += 1
