@@ -18,7 +18,8 @@ def train_specialist(data, model_name, timesteps=300000):
         return
 
     print(f"Training {model_name}...")
-    env = TradingEnv(df=data)
+    features = ['Close', 'Volume', 'RSI_14', 'ADX_14']
+    env = TradingEnv(df=data, feature_columns=features)
     model = PPO('MlpPolicy', env, verbose=1, ent_coef=0.01)
     model.learn(total_timesteps=timesteps)
 

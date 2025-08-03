@@ -99,7 +99,8 @@ def main():
 
     # Initialize agents and environment
     master_agent = MasterAgent()
-    env = TradingEnv(df=full_data, initial_balance=initial_balance)
+    features = ['Close', 'Volume', 'RSI_14', 'ADX_14']
+    env = TradingEnv(df=full_data, initial_balance=initial_balance, feature_columns=features)
     obs = env.reset()
 
     results = {

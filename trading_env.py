@@ -9,7 +9,7 @@ class TradingEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, initial_balance=10000):
+    def __init__(self, df, initial_balance=10000, feature_columns=None):
         super(TradingEnv, self).__init__()
 
         self.df = df
@@ -19,8 +19,11 @@ class TradingEnv(gym.Env):
         self.entry_price = 0
         self.current_step = 0
 
-        # Define the feature columns for the simplified observation space
-        self.feature_columns = ['Close', 'Volume', 'RSI_14', 'ADX_14']
+        # Define the feature columns for the observation space
+        if feature_columns is None:
+            self.feature_columns = ['Close', 'Volume', 'RSI_14', 'ADX_14']
+        else:
+            self.feature_columns = feature_columns
 
         # Actions: 0: Hold, 1: Buy, 2: Sell
         self.action_space = spaces.Discrete(3)
@@ -42,7 +45,7 @@ class TradingEnv(gym.Env):
 
     def _get_observation(self):
         """
-        Gets the observation for the current step using the simplified feature set.
+        Gets the observation for the current step using the specified feature set.
         """
         obs = self.df[self.feature_columns].iloc[self.current_step].values
         obs = np.append(obs, self.position)
